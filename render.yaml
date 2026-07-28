@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: privacy-lens-api
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: privacy-lens-db
+          property: connectionString
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: NODE_VERSION
+        value: 22
+
+databases:
+  - name: privacy-lens-db
+    plan: free

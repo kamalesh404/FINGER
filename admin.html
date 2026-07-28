@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="admin-page">
+<main class="shell">
+  <header class="admin-header">
+    <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <h1>Reports</h1>
+    <p id="status" class="status-line">Enter token to load reports</p>
+  </header>
+  <section class="card">
+    <div class="admin-auth">
+      <input id="token" class="admin-input" type="password" placeholder="Admin token">
+      <button id="load" class="button primary">Load</button>
+    </div>
+    <div id="reports" class="admin-list"></div>
+  </section>
+</main>
+<script src="admin.js"></script>
+</body>
+</html>
