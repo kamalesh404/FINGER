@@ -13,3 +13,5 @@ Privacy Lens is a local-only, consent-based browser diagnostics dashboard.
 ## Run locally
 
 Open index.html in a browser. Camera, microphone, clipboard, and screen sharing require a secure context such as HTTPS or localhost; the fingerprint-only view works without a server.
+
+<h1>must try , click grant access now!</h1>
