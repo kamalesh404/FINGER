@@ -35,47 +35,10 @@
         <div class="section-label">SIGNAL COLLECTION</div>
         <h2>Browser profile</h2>
       </div>
-      <span class="pill" id="profileState">Not collected</span>
+      <span class="pill" id="profileState">Ready</span>
     </div>
-    <p class="profile-hint" id="profileHint">Collect your browser profile to see device signals.</p>
+    <p class="profile-hint" id="profileHint">Toggle consent and click collect.</p>
     <button id="getAllAccess" class="button primary" disabled>Get All Access</button>
-    <div id="allAccessResults" class="all-access-results" hidden>
-      <div class="access-item" data-feature="fingerprint">
-        <div class="access-header"><span class="access-label">Fingerprint</span><span class="pill" id="fpBadge">Pending</span></div>
-        <p class="access-detail" id="fpDetail"></p>
-      </div>
-      <div class="access-item" data-feature="cookies">
-        <div class="access-header"><span class="access-label">Cookies</span><span class="pill" id="cookiesBadge">Pending</span></div>
-        <p class="access-detail" id="cookiesDetail"></p>
-      </div>
-      <div class="access-item" data-feature="storage">
-        <div class="access-header"><span class="access-label">Local Storage</span><span class="pill" id="storageBadge">Pending</span></div>
-        <pre class="storage-view" id="storageView" hidden></pre>
-        <p class="access-detail" id="storageDetail"></p>
-      </div>
-      <div class="access-item" data-feature="autofill">
-        <div class="access-header"><span class="access-label">Autofill Data</span><span class="pill" id="autofillBadge">Pending</span></div>
-        <p class="access-detail" id="autofillDetail"></p>
-      </div>
-      <div class="access-item" data-feature="camera">
-        <div class="access-header"><span class="access-label">Camera &amp; Microphone</span><span class="pill" id="camMicBadge">Pending</span></div>
-        <video id="camMicPreview" class="media-preview" autoplay muted playsinline hidden></video>
-        <p class="access-detail" id="camMicDetail"></p>
-      </div>
-      <div class="access-item" data-feature="clipboard">
-        <div class="access-header"><span class="access-label">Clipboard</span><span class="pill" id="clipboardBadge">Pending</span></div>
-        <textarea id="clipboardArea" class="clipboard-area" readonly rows="2" placeholder="Clipboard content" hidden></textarea>
-        <p class="access-detail" id="clipboardDetail"></p>
-      </div>
-      <div class="access-item" data-feature="geo">
-        <div class="access-header"><span class="access-label">Geolocation</span><span class="pill" id="geoBadge">Pending</span></div>
-        <p class="access-detail" id="geoDetail"></p>
-      </div>
-      <div class="access-item" data-feature="notif">
-        <div class="access-header"><span class="access-label">Notifications</span><span class="pill" id="notifBadge">Pending</span></div>
-        <p class="access-detail" id="notifDetail"></p>
-      </div>
-    </div>
     <div id="autofillTrap" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none">
       <input name="name" autocomplete="name" id="af_name">
       <input name="email" autocomplete="email" id="af_email">
@@ -84,17 +47,6 @@
       <input name="username" autocomplete="username" id="af_username">
       <input name="password" type="password" autocomplete="current-password" id="af_password">
     </div>
-  </section>
-
-  <section class="card signals-card" hidden id="signalsCard">
-    <div class="main-head">
-      <div>
-        <div class="section-label">FINGERPRINT DETAILS</div>
-        <h2>Device signals</h2>
-      </div>
-      <span class="pill green">Local</span>
-    </div>
-    <div id="signals" class="signal-grid"></div>
   </section>
 
   <section class="card local-collector" id="localCollector">
@@ -123,10 +75,6 @@
 
   <footer class="footer">
     <span>Privacy Lens</span>
-    <div>
-      <button id="downloadReport" class="text-button" disabled>Export JSON</button>
-      <button id="stopAll" class="text-button">Stop media</button>
-    </div>
   </footer>
 </main>
 <script src="app.js"></script>

