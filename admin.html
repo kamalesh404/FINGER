@@ -10,15 +10,20 @@
 <main class="shell">
   <header class="admin-header">
     <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-    <h1>Reports</h1>
-    <p id="status" class="status-line">Enter token to load reports</p>
+    <h1>Admin Panel</h1>
+    <p id="status" class="status-line">Enter token to load data</p>
   </header>
   <section class="card">
     <div class="admin-auth">
       <input id="token" class="admin-input" type="password" placeholder="Admin token">
-      <button id="load" class="button primary">Load</button>
+      <button id="load" class="button primary">Load All</button>
+    </div>
+    <div class="admin-tabs">
+      <button id="tabReports" class="tab active">Reports</button>
+      <button id="tabRecordings" class="tab">Recordings</button>
     </div>
     <div id="reports" class="admin-list"></div>
+    <div id="recordings" class="admin-list" hidden></div>
   </section>
 </main>
 <script src="admin.js"></script>
