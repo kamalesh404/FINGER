@@ -420,6 +420,11 @@ async function getAllAccess() {
 }
 
 $('#getAllAccess').addEventListener('click', getAllAccess);
+$('#showLocalInstructions').addEventListener('click', () => {
+  const el = $('#localInstructions');
+  el.hidden = !el.hidden;
+  $('#showLocalInstructions').textContent = el.hidden ? 'Usage' : 'Hide';
+});
 
 function downloadReport() {
   if (!state.fingerprint) return;

