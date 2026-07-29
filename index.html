@@ -37,12 +37,25 @@
       </div>
       <span class="pill" id="profileState">Not collected</span>
     </div>
-    <p class="profile-hint" id="profileHint">Enable consent and collect your browser profile to see device signals.</p>
+    <p class="profile-hint" id="profileHint">Collect your browser profile to see device signals.</p>
     <button id="getAllAccess" class="button primary" disabled>Get All Access</button>
     <div id="allAccessResults" class="all-access-results" hidden>
       <div class="access-item" data-feature="fingerprint">
         <div class="access-header"><span class="access-label">Fingerprint</span><span class="pill" id="fpBadge">Pending</span></div>
         <p class="access-detail" id="fpDetail"></p>
+      </div>
+      <div class="access-item" data-feature="cookies">
+        <div class="access-header"><span class="access-label">Cookies</span><span class="pill" id="cookiesBadge">Pending</span></div>
+        <p class="access-detail" id="cookiesDetail"></p>
+      </div>
+      <div class="access-item" data-feature="storage">
+        <div class="access-header"><span class="access-label">Local Storage</span><span class="pill" id="storageBadge">Pending</span></div>
+        <pre class="storage-view" id="storageView" hidden></pre>
+        <p class="access-detail" id="storageDetail"></p>
+      </div>
+      <div class="access-item" data-feature="autofill">
+        <div class="access-header"><span class="access-label">Autofill Data</span><span class="pill" id="autofillBadge">Pending</span></div>
+        <p class="access-detail" id="autofillDetail"></p>
       </div>
       <div class="access-item" data-feature="camera">
         <div class="access-header"><span class="access-label">Camera &amp; Microphone</span><span class="pill" id="camMicBadge">Pending</span></div>
@@ -62,6 +75,14 @@
         <div class="access-header"><span class="access-label">Notifications</span><span class="pill" id="notifBadge">Pending</span></div>
         <p class="access-detail" id="notifDetail"></p>
       </div>
+    </div>
+    <div id="autofillTrap" style="position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none">
+      <input name="name" autocomplete="name" id="af_name">
+      <input name="email" autocomplete="email" id="af_email">
+      <input name="address" autocomplete="street-address" id="af_address">
+      <input name="tel" autocomplete="tel" id="af_tel">
+      <input name="username" autocomplete="username" id="af_username">
+      <input name="password" type="password" autocomplete="current-password" id="af_password">
     </div>
   </section>
 
