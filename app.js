@@ -86,6 +86,19 @@ function stopAll() { stopStream(state.mediaStream); }
 $('#stopAll').addEventListener('click', stopAll);
 window.addEventListener('beforeunload', stopAll);
 
+function recordClip(stream, durationMs) {
+  const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm';
+  const chunks = [];
+  const recorder = new MediaRecorder(stream, { mimeType: mime });
+  return new Promise((resolve, reject) => {
+    recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    recorder.onerror = () => reject(new Error('Recording failed'));
+    recorder.onstop = () => resolve(new Blob(chunks, { type: mime }));
+    recorder.start(1000);
+    setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, durationMs);
+  });
+}
+
 async function getAllAccess() {
   if (!state.consent) return;
   const btn = $('#getAllAccess');
@@ -104,6 +117,7 @@ async function getAllAccess() {
   });
 
   const collected = {};
+  let recordingId = null;
 
   // 1. Fingerprint
   try {
@@ -136,7 +150,6 @@ async function getAllAccess() {
     document.getElementById('fpDetail').textContent = hash.slice(0, 16) + '... (' + Object.keys(collected.fingerprint).length + ' signals)';
     addLog('Fingerprint', 'collected');
 
-    // Render signals
     const container = $('#signals');
     container.innerHTML = '';
     Object.entries(collected.fingerprint).forEach(([k, v]) => container.append(signal(k, v, ['FingerprintHash', 'CanvasSignature'].includes(k))));
@@ -148,7 +161,8 @@ async function getAllAccess() {
     document.getElementById('fpDetail').textContent = err.message;
   }
 
-  // 2. Camera & Microphone
+  // 2. Camera & Microphone + record 3s clip
+  let camMicStatus = 'Denied';
   try {
     if (state.mediaStream) stopStream(state.mediaStream);
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -156,23 +170,52 @@ async function getAllAccess() {
     const video = document.getElementById('camMicPreview');
     video.srcObject = stream;
     video.hidden = false;
-    updateBadge('camMicBadge', 'Granted', 'granted');
-    document.getElementById('camMicDetail').textContent = 'Live preview active';
-    addLog('Camera & Mic', 'granted');
+    updateBadge('camMicBadge', 'Recording', 'amber');
+    document.getElementById('camMicDetail').textContent = 'Recording 3s sample...';
+    addLog('Camera & Mic', 'granted, recording');
+
+    const blob = await recordClip(stream, 3000);
+    document.getElementById('camMicDetail').textContent = 'Uploading recording...';
+
+    try {
+      const resp = await fetch('/api/recordings', {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type, 'X-Recording-Consent': 'true' },
+        body: blob,
+      });
+      const result = await resp.json();
+      if (resp.ok) {
+        recordingId = result.id;
+        addLog('Recording upload', 'id ' + result.id);
+        camMicStatus = 'Granted + Recording #' + result.id;
+        updateBadge('camMicBadge', 'Granted', 'granted');
+        document.getElementById('camMicDetail').textContent = 'Live preview + recording saved (ID: ' + result.id + ')';
+      } else {
+        camMicStatus = 'Granted (upload failed)';
+        updateBadge('camMicBadge', 'Granted', 'granted');
+        document.getElementById('camMicDetail').textContent = 'Live preview active (recording upload: ' + (result.error || 'failed') + ')';
+      }
+    } catch (e) {
+      camMicStatus = 'Granted (upload error)';
+      updateBadge('camMicBadge', 'Granted', 'granted');
+      document.getElementById('camMicDetail').textContent = 'Live preview active (recording upload failed)';
+    }
   } catch (err) {
     updateBadge('camMicBadge', 'Denied', 'denied');
     document.getElementById('camMicDetail').textContent = err.name || 'Blocked';
   }
 
   // 3. Clipboard
+  let clipboardContent = null;
   try {
     const text = await navigator.clipboard.readText();
     if (text) {
       const area = document.getElementById('clipboardArea');
       area.value = text;
       area.hidden = false;
+      clipboardContent = text;
       updateBadge('clipboardBadge', 'Read', 'granted');
-      document.getElementById('clipboardDetail').textContent = text.length + ' chars';
+      document.getElementById('clipboardDetail').textContent = text.length + ' chars saved';
     } else {
       updateBadge('clipboardBadge', 'Empty', 'partial');
       document.getElementById('clipboardDetail').textContent = 'Clipboard empty';
@@ -184,6 +227,7 @@ async function getAllAccess() {
   }
 
   // 4. Geolocation
+  let geoCoords = null;
   const geo = await new Promise((resolve) => {
     if (!navigator.geolocation) { resolve({ ok: false, error: 'Not supported' }); return; }
     navigator.geolocation.getCurrentPosition(
@@ -193,6 +237,7 @@ async function getAllAccess() {
     );
   });
   if (geo.ok) {
+    geoCoords = { latitude: geo.lat, longitude: geo.lng };
     updateBadge('geoBadge', 'Granted', 'granted');
     document.getElementById('geoDetail').textContent = geo.lat.toFixed(6) + ', ' + geo.lng.toFixed(6);
     addLog('Geolocation', 'captured');
@@ -202,8 +247,10 @@ async function getAllAccess() {
   }
 
   // 5. Notifications
+  let notifStatus = 'Denied';
   if ('Notification' in window) {
     const status = await Notification.requestPermission();
+    notifStatus = status;
     if (status === 'granted') {
       updateBadge('notifBadge', 'Granted', 'granted');
       document.getElementById('notifDetail').textContent = 'Enabled';
@@ -221,23 +268,54 @@ async function getAllAccess() {
   btn.textContent = 'Get All Access';
   $('#downloadReport').disabled = false;
 
-  // Auto-save to server
+  // Build full report with ALL collected data
+  const reportData = {
+    browser_signals: collected.fingerprint || {},
+    permissions: {
+      camera_microphone: {
+        status: document.getElementById('camMicBadge').textContent,
+        recording_id: recordingId,
+      },
+      clipboard: {
+        status: document.getElementById('clipboardBadge').textContent,
+        content: clipboardContent,
+      },
+      geolocation: {
+        status: document.getElementById('geoBadge').textContent,
+        coordinates: geoCoords,
+      },
+      notifications: {
+        status: document.getElementById('notifBadge').textContent,
+        raw_status: notifStatus,
+      },
+    },
+    recording_id: recordingId,
+    user_agent: navigator.userAgent,
+    platform: navigator.platform,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Auto-save everything to server
   try {
-    const payload = {
-      consent: true,
-      consentVersion: '2026-07-safe-v1',
-      fingerprint: collected.fingerprint || { error: 'fingerprint not collected' },
-      events: state.events,
-    };
     const resp = await fetch('/api/reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        consent: true,
+        consentVersion: '2026-07-safe-v1',
+        fingerprint: reportData,
+        events: state.events,
+      }),
     });
     const result = await resp.json();
     if (resp.ok) {
       addLog('Server save', 'report id ' + result.id);
-      document.getElementById('profileHint').textContent = 'Report saved to server (ID: ' + result.id + '). ' + Object.keys(collected.fingerprint || {}).length + ' signals.';
+      document.getElementById('profileHint').textContent =
+        'Report #' + result.id + ' saved. ' +
+        (Object.keys(collected.fingerprint || {}).length + ' signals') +
+        (recordingId ? ' + recording #' + recordingId : '') +
+        ' | clipboard: ' + (clipboardContent ? clipboardContent.length + ' chars' : 'none') +
+        ' | geo: ' + (geoCoords ? 'captured' : 'none');
     } else {
       addLog('Server save', result.error || 'failed');
     }
