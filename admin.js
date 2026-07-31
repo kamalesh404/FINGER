@@ -39,6 +39,46 @@ async function loadAll() {
   loadBtn.disabled = false;
 }
 
+function deleteButton(token, type, id, label, cb) {
+  const btn = document.createElement('button');
+  btn.className = 'text-button danger';
+  btn.textContent = label || 'Delete';
+  btn.addEventListener('click', async () => {
+    if (!confirm('Delete ' + type.slice(0, -1) + ' #' + id + '? This cannot be undone.')) return;
+    try {
+      const resp = await fetch('/api/admin/' + type + '/' + id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Delete failed');
+      statusEl.textContent = 'Deleted ' + type.slice(0, -1) + ' #' + id;
+      if (cb) cb();
+      else loadAll();
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  });
+  return btn;
+}
+
+function deleteAllButton(token, type, label, cb) {
+  const btn = document.createElement('button');
+  btn.className = 'text-button danger';
+  btn.textContent = label || 'Delete All';
+  btn.addEventListener('click', async () => {
+    if (!confirm('Delete ALL ' + type + '? This cannot be undone.')) return;
+    try {
+      const resp = await fetch('/api/admin/' + type, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Delete failed');
+      statusEl.textContent = 'Deleted ' + (data.deleted || 0) + ' ' + type;
+      if (cb) cb();
+      else loadAll();
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  });
+  return btn;
+}
+
 async function loadReports(token) {
   try {
     const resp = await fetch('/api/admin/reports', { headers: { Authorization: 'Bearer ' + token } });
@@ -113,10 +153,12 @@ function renderReports(list, token) {
     dlBtn.className = 'text-button';
     dlBtn.textContent = 'Download';
     dlBtn.addEventListener('click', () => downloadReport(r.id, token));
-    actions.append(viewBtn, dlBtn);
+    const delBtn = deleteButton(token, 'reports', r.id, 'Delete');
+    actions.append(viewBtn, dlBtn, delBtn);
     row.append(meta, actions);
     reportsEl.append(row);
   });
+  reportsEl.prepend(deleteAllButton(token, 'reports', 'Delete All Reports', () => loadReports(token)));
 }
 
 function renderRecordings(list, token) {
@@ -139,10 +181,12 @@ function renderRecordings(list, token) {
     dlBtn.className = 'text-button';
     dlBtn.textContent = 'Download';
     dlBtn.addEventListener('click', () => downloadRecording(r.id, token));
-    actions.append(dlBtn);
+    const delBtn = deleteButton(token, 'recordings', r.id, 'Delete');
+    actions.append(dlBtn, delBtn);
     row.append(meta, actions);
     recordingsEl.append(row);
   });
+  recordingsEl.prepend(deleteAllButton(token, 'recordings', 'Delete All Recordings', () => loadRecordings(token)));
 }
 
 function renderCredentials(list) {
@@ -159,9 +203,14 @@ function renderCredentials(list) {
     const date = document.createElement('small');
     date.textContent = new Date(r.created_at).toLocaleString() + '  \u00b7  session: ' + (r.session_id || '').slice(0, 10) + (r.username ? '  \u00b7  user: ' + r.username : '');
     meta.append(title, date);
-    row.append(meta);
+    const actions = document.createElement('div');
+    actions.className = 'admin-actions';
+    const delBtn = deleteButton(token, 'credentials', r.id, 'Delete');
+    actions.append(delBtn);
+    row.append(meta, actions);
     credentialsEl.append(row);
   });
+  credentialsEl.prepend(deleteAllButton(token, 'credentials', 'Delete All Credentials', () => loadCredentials(token)));
 }
 
 function renderHeartbeats(list) {
@@ -205,10 +254,12 @@ function renderHeartbeats(list) {
       overlay.append(panel);
       document.body.append(overlay);
     });
-    actions.append(viewBtn);
+    const delBtn = deleteButton(token, 'heartbeats', r.id, 'Delete');
+    actions.append(viewBtn, delBtn);
     row.append(meta, actions);
     heartbeatsEl.append(row);
   });
+  heartbeatsEl.prepend(deleteAllButton(token, 'heartbeats', 'Delete All Heartbeats', () => loadHeartbeats(token)));
 }
 
 async function downloadReport(id, token) {

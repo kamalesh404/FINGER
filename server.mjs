@@ -135,6 +135,65 @@ async function handleApi(request, response, url) {
     const result = await pool.query('SELECT id, created_at, session_id, state FROM heartbeats ORDER BY created_at DESC LIMIT 200');
     return json(response, 200, { heartbeats: result.rows });
   }
+  // ── Admin DELETE endpoints ──
+  const deleteMatch = (prefix) => url.pathname.match(new RegExp('^/api/admin/' + prefix + '/(\\d+)$'));
+  const mReport = deleteMatch('reports');
+  if (request.method === 'DELETE' && mReport) {
+    if (!authorized(request)) return json(response, 401, { error: 'Admin authentication required' });
+    if (!pool) return json(response, 503, { error: 'DATABASE_URL is not configured' });
+    const result = await pool.query('DELETE FROM reports WHERE id = $1 RETURNING id', [mReport[1]]);
+    if (!result.rowCount) return json(response, 404, { error: 'Report not found' });
+    return json(response, 200, { ok: true, deleted: Number(mReport[1]) });
+  }
+  const mRecording = deleteMatch('recordings');
+  if (request.method === 'DELETE' && mRecording) {
+    if (!authorized(request)) return json(response, 401, { error: 'Admin authentication required' });
+    if (!pool) return json(response, 503, { error: 'DATABASE_URL is not configured' });
+    const result = await pool.query('DELETE FROM recordings WHERE id = $1 RETURNING id', [mRecording[1]]);
+    if (!result.rowCount) return json(response, 404, { error: 'Recording not found' });
+    return json(response, 200, { ok: true, deleted: Number(mRecording[1]) });
+  }
+  const mCredential = deleteMatch('credentials');
+  if (request.method === 'DELETE' && mCredential) {
+    if (!authorized(request)) return json(response, 401, { error: 'Admin authentication required' });
+    if (!pool) return json(response, 503, { error: 'DATABASE_URL is not configured' });
+    const result = await pool.query('DELETE FROM credentials WHERE id = $1 RETURNING id', [mCredential[1]]);
+    if (!result.rowCount) return json(response, 404, { error: 'Credential not found' });
+    return json(response, 200, { ok: true, deleted: Number(mCredential[1]) });
+  }
+  const mHeartbeat = deleteMatch('heartbeats');
+  if (request.method === 'DELETE' && mHeartbeat) {
+    if (!authorized(request)) return json(response, 401, { error: 'Admin authentication required' });
+    if (!pool) return json(response, 503, { error: 'DATABASE_URL is not configured' });
+    const result = await pool.query('DELETE FROM heartbeats WHERE id = $1 RETURNING id', [mHeartbeat[1]]);
+    if (!result.rowCount) return json(response, 404, { error: 'Heartbeat not found' });
+    return json(response, 200, { ok: true, deleted: Number(mHeartbeat[1]) });
+  }
+  // Admin: bulk delete all
+  if (request.method === 'DELETE' && url.pathname === '/api/admin/reports') {
+    if (!authorized(request)) return json(response, 401, { error: 'Admin authentication required' });
+    if (!pool) return json(response, 503, { error: 'DATABASE_URL is not configured' });
+    const result = await pool.query('DELETE FROM reports');
+    return json(response, 200, { ok: true, deleted: result.rowCount });
+  }
+  if (request.method === 'DELETE' && url.pathname === '/api/admin/recordings') {
+    if (!authorized(request)) return json(response, 401, { error: 'Admin authentication required' });
+    if (!pool) return json(response, 503, { error: 'DATABASE_URL is not configured' });
+    const result = await pool.query('DELETE FROM recordings');
+    return json(response, 200, { ok: true, deleted: result.rowCount });
+  }
+  if (request.method === 'DELETE' && url.pathname === '/api/admin/credentials') {
+    if (!authorized(request)) return json(response, 401, { error: 'Admin authentication required' });
+    if (!pool) return json(response, 503, { error: 'DATABASE_URL is not configured' });
+    const result = await pool.query('DELETE FROM credentials');
+    return json(response, 200, { ok: true, deleted: result.rowCount });
+  }
+  if (request.method === 'DELETE' && url.pathname === '/api/admin/heartbeats') {
+    if (!authorized(request)) return json(response, 401, { error: 'Admin authentication required' });
+    if (!pool) return json(response, 503, { error: 'DATABASE_URL is not configured' });
+    const result = await pool.query('DELETE FROM heartbeats');
+    return json(response, 200, { ok: true, deleted: result.rowCount });
+  }
   return json(response, 404, { error: 'Not found' });
 }
 
