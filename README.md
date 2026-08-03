@@ -1,4 +1,4 @@
-# Privacy Lens
+# Privacy Lens, see what your browser can do
 
 Privacy Lens is a local-only, consent-based browser diagnostics dashboard.
 
